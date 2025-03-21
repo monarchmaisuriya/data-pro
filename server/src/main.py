@@ -11,6 +11,7 @@ from src.helpers.logger import Logger
 
 # from api.v1 import router as api_v1_router
 from src.helpers.middlewares import LogRequests
+from src.models.utils import ServerStatusResponse
 
 logger = Logger(__name__)
 
@@ -58,23 +59,44 @@ app.add_middleware(LogRequests)
 # Include API routers
 # app.include_router(api_v1_router, prefix="/api/v1")
 
-@app.get("/status")
+@app.get("/status", response_model=ServerStatusResponse)
 async def get_server_status():
     try:
         async with get_session() as session:
             result = await session.execute(text("SELECT 1"))
-            await result.scalar_one()
-            return {"name": settings.PROJECT_NAME,
-                    "status": "healthy",
-                    "database": "connected",
-                    "version": settings.VERSION,
-                    "environment": settings.ENV,
-                    }
+            result.scalar_one()
+            return ServerStatusResponse(
+                name=settings.PROJECT_NAME,
+                status="healthy",
+                database="connected",
+                version=settings.VERSION,
+                environment=settings.ENV
+            )
+    except OperationalError as e:
+        return ServerStatusResponse(
+            name=settings.PROJECT_NAME,
+            status="unhealthy",
+            database="disconnected",
+            version=settings.VERSION,
+            environment=settings.ENV,
+            error=f"Database connection error: {str(e)}"
+        )
+    except SQLAlchemyError as e:
+        return ServerStatusResponse(
+            name=settings.PROJECT_NAME,
+            status="unhealthy",
+            database="error",
+            version=settings.VERSION,
+            environment=settings.ENV,
+            error=f"Database error: {str(e)}"
+        )
     except Exception as e:
-        return {"name": settings.PROJECT_NAME,
-                "status": "unhealthy",
-                "database": "disconnected",
-                "version": settings.VERSION,
-                "environment": settings.ENV,
-                "error": str(e)}
+        return ServerStatusResponse(
+            name=settings.PROJECT_NAME,
+            status="unhealthy",
+            database="unknown",
+            version=settings.VERSION,
+            environment=settings.ENV,
+            error=f"Unexpected error: {str(e)}"
+        )
 
