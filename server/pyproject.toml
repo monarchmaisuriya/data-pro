@@ -9,10 +9,10 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "pydantic>=2.10.6",
     "pydantic-settings>=2.8.1",
-    "psycopg2-binary>=2.9.10",
     "sqlmodel<1.0.0,>=0.0.24",
     "tenacity>=9.0.0",
     "alembic>=1.15.1",
+    "asyncpg>=0.29.0",
 ]
 
 [dependency-groups]
