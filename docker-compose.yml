@@ -1,0 +1,53 @@
+services:
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      target: ${TARGET:-development}
+    ports:
+      - "5173:5173"
+    env_file: ./client/.env
+    depends_on:
+      - server
+    networks:
+      - data-pro
+    volumes:
+      - ./client:/app:rw
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      target: ${TARGET:-development}
+    ports:
+      - "8000:8000"
+    env_file: ./server/.env
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - data-pro
+    volumes:
+      - ./server:/app:rw
+
+  database:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file: ./server/.env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - data-pro
+
+networks:
+  data-pro:
+    driver: bridge
+
+volumes:
+  postgres_data:
