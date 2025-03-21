@@ -25,13 +25,13 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
         yield
     except OperationalError as e:
         logger.error(f"Database connection failed during startup: {e}")
-        raise
+        raise OperationalError from e
     except SQLAlchemyError as e:
         logger.error(f"Database error during startup: {e}")
-        raise
+        raise SQLAlchemyError from e
     except Exception as e:
         logger.error(f"Unexpected error during startup: {e}")
-        raise
+        raise Exception from e
     finally:
         # Cleanup will be handled by SQLModel's connection pooling
         logger.info("Application shutdown - Database connections will be cleaned up")
