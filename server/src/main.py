@@ -1,15 +1,18 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, text
 
-from core.config import settings
-from core.database import engine, init_db
+from src.core.config import settings
+from src.core.database import engine, init_db
+
 # from api.v1 import router as api_v1_router
-from helpers.middlewares import RequestLoggingMiddleware
+from src.helpers.middlewares import LogRequests
+
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):  # noqa: ARG001
     try:
         # Startup: ensure database is ready and initialized
         with Session(engine) as session:
@@ -36,7 +39,7 @@ app.add_middleware(
 )
 
 # Add request logging middleware
-app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(LogRequests)
 
 # Include API routers
 # app.include_router(api_v1_router, prefix="/api/v1")
@@ -47,7 +50,7 @@ def get_server_status():
         with Session(engine) as session:
             session.exec(text("SELECT 1"))
             return {"name": settings.PROJECT_NAME,
-                    "status": "healthy", 
+                    "status": "healthy",
                     "database": "connected",
                     "version": settings.VERSION,
                     "environment": settings.ENV,
@@ -55,7 +58,7 @@ def get_server_status():
     except Exception as e:
         return {"name": settings.PROJECT_NAME,
                 "status": "unhealthy",
-                "database": "disconnected", 
+                "database": "disconnected",
                 "version": settings.VERSION,
                 "environment": settings.ENV,
                 "error": str(e)}
