@@ -1,9 +1,10 @@
-from collections.abc import Generator
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from sqlalchemy.pool import QueuePool
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import AsyncAdaptedQueuePool
+from sqlmodel import SQLModel, select
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -17,10 +18,10 @@ from src.helpers.logger import Logger
 
 logger = Logger(__name__)
 
-# Configure engine with production-grade settings
-engine = create_engine(
+# Configure async engine with production-grade settings
+engine = create_async_engine(
     str(settings.DATABASE_URL),
-    poolclass=QueuePool,
+    poolclass=AsyncAdaptedQueuePool,
     pool_size=5,  # Number of permanent connections
     max_overflow=10,  # Number of additional connections when pool is full
     pool_timeout=30,  # Seconds to wait for available connection
@@ -29,31 +30,31 @@ engine = create_engine(
     echo=settings.ENV == "development"  # SQL logging in development
 )
 
-@contextmanager
-def get_session() -> Generator[Session, None, None]:
-    """Get a database session with automatic cleanup.
+@asynccontextmanager
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """Get an async database session with automatic cleanup.
     Yields:
-        Session: SQLModel session object
+        AsyncSession: SQLModel async session object
     Raises:
         SQLAlchemyError: If database operations fail
     """
-    session = Session(engine)
+    session = AsyncSession(engine)
     try:
         yield session
-        session.commit()
+        await session.commit()
     except SQLAlchemyError as e:
-        session.rollback()
+        await session.rollback()
         logger.error(f"Database session error: {str(e)}")
         raise
     finally:
-        session.close()
+        await session.close()
 
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=2, min=1, max=30),
     retry=retry_if_exception_type((OperationalError, SQLAlchemyError))
 )
-def init_db(session: Session) -> None:
+async def init_db(session: AsyncSession) -> None:
     """Initialize database with retry logic for connection failures.
     Args:
         session (Session): SQLModel session object
@@ -66,17 +67,17 @@ def init_db(session: Session) -> None:
         if registered_tables:
             logger.info(f"Registered tables: {registered_tables}")
             # Create database tables with explicit metadata binding
-            SQLModel.metadata.create_all(bind=engine, checkfirst=True)
+            # Use engine.sync_engine for table creation since SQLModel's create_all expects a sync engine
+            await session.run_sync(lambda s: SQLModel.metadata.create_all(bind=engine.sync_engine, checkfirst=True))
             logger.info("Tables created successfully.")
         else:
             logger.warning("No tables registered in SQLModel metadata.")
 
         # Verify database connection with a more precise health check
-        result = session.execute(
+        result = await session.execute(
             select(1).execution_options(timeout=10)
-        ).scalar_one()
-
-        if result != 1:
+        )
+        if result.scalar_one() != 1:
             raise SQLAlchemyError("Database health check failed: unexpected response")
 
         logger.info("Database initialized successfully - Connection verified")
@@ -87,7 +88,7 @@ def init_db(session: Session) -> None:
             "retry_attempt": True
         }
         logger.error(f"Database connection failed: {error_context}")
-        raise
+        raise OperationalError(f"Database connection failed: {error_context}")
     except SQLAlchemyError as e:
         error_context = {
             "error_type": "database_error",
@@ -95,7 +96,7 @@ def init_db(session: Session) -> None:
             "operation": "initialization"
         }
         logger.error(f"Database error occurred: {error_context}")
-        raise
+        raise SQLAlchemyError(f"Database error occurred: {error_context}")
 
 
 

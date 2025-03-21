@@ -2,25 +2,39 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session, text
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from sqlmodel import text
 
 from src.core.config import settings
-from src.core.database import engine, init_db
+from src.core.database import get_session, init_db
+from src.helpers.logger import Logger
 
 # from api.v1 import router as api_v1_router
 from src.helpers.middlewares import LogRequests
+
+logger = Logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     try:
         # Startup: ensure database is ready and initialized
-        with Session(engine) as session:
-            init_db(session)
+        async with get_session() as session:
+            await init_db(session)
+            logger.info("Database initialized successfully during startup")
         yield
+    except OperationalError as e:
+        logger.error(f"Database connection failed during startup: {e}")
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error during startup: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during startup: {e}")
+        raise
     finally:
-        session.close()
-        # No need to explicitly dispose since SQLModel handles connection pooling
+        # Cleanup will be handled by SQLModel's connection pooling
+        logger.info("Application shutdown - Database connections will be cleaned up")
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -45,10 +59,11 @@ app.add_middleware(LogRequests)
 # app.include_router(api_v1_router, prefix="/api/v1")
 
 @app.get("/status")
-def get_server_status():
+async def get_server_status():
     try:
-        with Session(engine) as session:
-            session.exec(text("SELECT 1"))
+        async with get_session() as session:
+            result = await session.execute(text("SELECT 1"))
+            await result.scalar_one()
             return {"name": settings.PROJECT_NAME,
                     "status": "healthy",
                     "database": "connected",
