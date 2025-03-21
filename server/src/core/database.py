@@ -1,14 +1,21 @@
-import logging
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator, Optional
+
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.pool import QueuePool
-from sqlalchemy.exc import SQLAlchemyError, OperationalError
-from sqlmodel import Session, create_engine, select
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from sqlmodel import Session, SQLModel, create_engine, select
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
-from .config import settings
+import src.models  # noqa: F401
+from src.core.config import settings
+from src.helpers.logger import Logger
 
-logger = logging.getLogger(__name__)
+logger = Logger(__name__)
 
 # Configure engine with production-grade settings
 engine = create_engine(
@@ -42,9 +49,9 @@ def get_session() -> Generator[Session, None, None]:
         session.close()
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    retry=retry_if_exception_type(OperationalError)
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=2, min=1, max=30),
+    retry=retry_if_exception_type((OperationalError, SQLAlchemyError))
 )
 def init_db(session: Session) -> None:
     """Initialize database with retry logic for connection failures.
@@ -52,14 +59,43 @@ def init_db(session: Session) -> None:
         session (Session): SQLModel session object
     Raises:
         OperationalError: If database connection fails after retries
+        SQLAlchemyError: If any other database error occurs
     """
     try:
-        # Verify database connection
-        session.execute(select(1))
-        logger.info("Database connection successful")
+        registered_tables = SQLModel.metadata.tables.keys()
+        if registered_tables:
+            logger.info(f"Registered tables: {registered_tables}")
+            # Create database tables with explicit metadata binding
+            SQLModel.metadata.create_all(bind=engine, checkfirst=True)
+            logger.info("Tables created successfully.")
+        else:
+            logger.warning("No tables registered in SQLModel metadata.")
+
+        # Verify database connection with a more precise health check
+        result = session.execute(
+            select(1).execution_options(timeout=10)
+        ).scalar_one()
+
+        if result != 1:
+            raise SQLAlchemyError("Database health check failed: unexpected response")
+
+        logger.info("Database initialized successfully - Connection verified")
     except OperationalError as e:
-        logger.error(f"Database connection failed: {str(e)}")
+        error_context = {
+            "error_type": "connection_error",
+            "error_message": str(e),
+            "retry_attempt": True
+        }
+        logger.error(f"Database connection failed: {error_context}")
         raise
-    
+    except SQLAlchemyError as e:
+        error_context = {
+            "error_type": "database_error",
+            "error_message": str(e),
+            "operation": "initialization"
+        }
+        logger.error(f"Database error occurred: {error_context}")
+        raise
+
 
 
