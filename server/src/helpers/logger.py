@@ -1,11 +1,11 @@
 import logging
-import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from core.config import settings
+from src.core.config import settings
 
-def setup_logger(name: str = settings.PROJECT_NAME) -> logging.Logger:
+
+def Logger(name: str = settings.PROJECT_NAME) -> logging.Logger:
     """Configure and return a logger instance based on environment settings."""
     logger = logging.getLogger(name)
     logger.setLevel(settings.LOG_LEVEL)
@@ -23,7 +23,7 @@ def setup_logger(name: str = settings.PROJECT_NAME) -> logging.Logger:
         # Ensure log directory exists
         log_dir = Path(settings.LOG_DIR)
         log_dir.mkdir(exist_ok=True)
-        
+
         # Setup rotating file handler
         file_handler = RotatingFileHandler(
             filename=log_dir / settings.LOG_FILE,
@@ -36,4 +36,4 @@ def setup_logger(name: str = settings.PROJECT_NAME) -> logging.Logger:
     return logger
 
 # Create default logger instance
-logger = setup_logger()
+logger = Logger()

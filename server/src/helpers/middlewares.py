@@ -1,20 +1,21 @@
 import time
-from typing import Callable
-from fastapi import FastAPI, Request, Response
+from collections.abc import Callable
+
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from .logger import setup_logger
+from src.helpers.logger import Logger
 
-logger = setup_logger(__name__)
+logger = Logger(__name__)
 
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
+class LogRequests(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp):
         super().__init__(app)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         start_time = time.time()
-        
+
         # Get client IP, handling potential proxy headers
         client_ip = request.client.host if request.client else "unknown"
         forwarded_for = request.headers.get("X-Forwarded-For")
