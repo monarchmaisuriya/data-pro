@@ -20,22 +20,21 @@ A modern task scheduling service that allows users to schedule and manage tasks 
 
 ### Backend (Server)
 
-- FastAPI (Python)
+- FastAPI (Python) with uv for Python package management
 - PostgreSQL database
 
 ## Prerequisites
 
 - [Docker](https://www.docker.com/)
-- [uv](https://docs.astral.sh/uv/) for Python package management
+- [Docker Compose][Docker Compose](https://www.docker.com/compose/)
 
 ## Project Structure
 
 ```
-├── client/          # React frontend application
-├── server/          # FastAPI backend application
-├── docker-compose.yml         # Production Docker configuration
-├── docker-compose.override.yml # Development Docker configuration
-└── orchestrate.sh   # Project management script
+├── client/              # React frontend application
+├── server/              # FastAPI backend application
+├── docker-compose.yml   # Docker configuration
+└── orchestrate.sh       # Project management script
 ```
 
 ## Development Setup
@@ -94,18 +93,12 @@ The `orchestrate.sh` script provides a convenient way to manage the application'
 ### Client (Frontend)
 
 - Development server runs on port 5173
-- Built with React + TypeScript + Vite
-- Features hot module replacement (HMR)
-- Configured with ESLint for code quality
 
 ### Server (Backend)
 
 - FastAPI server runs on port 8000
-- PostgreSQL database on port 5432
-- Uses uv for Python package management
 
 ### Database
 
-- PostgreSQL 15 with Alpine-based image
-- Persistent data storage using Docker volumes
-- Includes health checks for reliability
+- PostgreSQL for persistent storage on port 5432
+- Redis for caching on port 6379
