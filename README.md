@@ -26,7 +26,7 @@ A modern task scheduling service that allows users to schedule and manage tasks 
 ## Prerequisites
 
 - [Docker](https://www.docker.com/)
-- [Docker Compose][Docker Compose](https://www.docker.com/compose/)
+- [Docker Compose](https://www.docker.com/compose/)
 
 ## Project Structure
 
