@@ -13,6 +13,8 @@ dependencies = [
     "tenacity>=9.0.0",
     "alembic>=1.15.1",
     "asyncpg>=0.29.0",
+    "fastcrud>=0.15.6",
+    "arq>=0.26.3",
 ]
 
 [dependency-groups]
