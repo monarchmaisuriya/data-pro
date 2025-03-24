@@ -4,48 +4,92 @@
 FROM python:3.12-slim AS development
 
 ENV COMPOSE_BAKE=true
-ENV PYTHONPATH=/app \
-    PYTHONUNBUFFERED=1
-WORKDIR /app
+ENV PYTHONUNBUFFERED=1
 
-# Install development dependencies and uv
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv
+WORKDIR /app/
 
-# Copy dependency files and install the dependencies
-COPY pyproject.toml uv.lock ./
-RUN uv sync 
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /bin/
 
-# Copy application code
-COPY . .
+# Place executables in the environment at the front of the path
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Compile bytecode
+ENV UV_COMPILE_BYTECODE=1
+
+# uv Cache
+ENV UV_LINK_MODE=copy
+
+# Install dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project
+
+ENV PYTHONPATH=/app
+
+COPY ./pyproject.toml ./uv.lock ./alembic.ini /app/
+
+COPY ./migrations /app/migrations/
+
+COPY ./src /app/src/
+
+# Sync the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync
+
+# Copy entrypoint script and set permissions
+COPY ./entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 
-# Start development server with FastAPI CLI
-CMD ["uv", "run", "fastapi", "dev", "--host", "0.0.0.0", "--port", "8000", "/app/src/main.py"]
+# Use entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]
 
 # Stage 2: Production stage
 FROM python:3.12-slim AS production
 
 ENV COMPOSE_BAKE=true
-ENV PYTHONPATH=/app \
-    PYTHONUNBUFFERED=1
-WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app/
 
 # Install uv
-RUN pip install --no-cache-dir uv
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /bin/
 
-# Copy dependency files and install the dependencies
-COPY pyproject.toml uv.lock ./
-RUN uv sync 
+# Place executables in the environment at the front of the path
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Copy application code
-COPY . .
+# Compile bytecode
+ENV UV_COMPILE_BYTECODE=1
+
+# uv Cache
+ENV UV_LINK_MODE=copy
+
+# Install dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project
+
+ENV PYTHONPATH=/app
+
+COPY ./pyproject.toml ./uv.lock ./alembic.ini /app/
+
+COPY ./migrations /app/migrations/
+
+COPY ./src /app/src/
+
+# Sync the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync
+
+# Copy entrypoint script and set permissions
+COPY ./entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 
-# Start production server with FastAPI CLI
-CMD ["uv", "run", "fastapi", "run", "--host", "0.0.0.0", "--port", "8000", "/app/src/main.py"]
-
+# Use entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]
