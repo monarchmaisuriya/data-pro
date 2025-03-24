@@ -1,4 +1,4 @@
-__all__ = ["Settings", "engine"]
+__all__ = ["Settings"]
 
 from src.core.config import Settings
-from src.core.database import engine
+
