@@ -12,8 +12,7 @@ This service allows users to schedule and manage tasks (jobs) that need to be ex
 6. **Task Dependencies**: Support for tasks that depend on the successful completion of other tasks (e.g., Task B can only run after Task A completes).
 7. **Retries and Failures**: Automatic retries for failed tasks and notification/alerting mechanisms.
 8. **Logging and Monitoring**: Logging of task execution, status updates, and results, as well as monitoring of task health.
-9. **User Management**: Users can create, manage, and monitor their scheduled tasks and see detailed logs and results via a web interface.
-10. **Web Interface/API**: Users interact with the service through a REST API or a simple web interface to schedule, cancel, or monitor their tasks.
+9. **Web Interface/API**: Users interact with the service through a REST API or a simple web interface to schedule, cancel, or monitor their tasks.
 
 ### Tech Stack:
 
