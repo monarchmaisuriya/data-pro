@@ -1,8 +1,7 @@
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlmodel import SQLModel, select
 from tenacity import (
@@ -19,18 +18,20 @@ from src.helpers.logger import Logger
 logger = Logger(__name__)
 
 # Configure async engine with production-grade settings
-engine = create_async_engine(
+async_engine = create_async_engine(
     str(settings.DATABASE_URL),
     poolclass=AsyncAdaptedQueuePool,
-    pool_size=5,  # Number of permanent connections
-    max_overflow=10,  # Number of additional connections when pool is full
-    pool_timeout=30,  # Seconds to wait for available connection
-    pool_recycle=1800,  # Recycle connections after 30 minutes
-    pool_pre_ping=True,  # Verify connection before using from pool
-    echo=settings.ENV == "development"  # SQL logging in development
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=60,
+    pool_recycle=1800,
+    pool_pre_ping=True,
+    pool_use_lifo=True,
+    connect_args={"timeout": 30}
 )
 
-@asynccontextmanager
+SessionFactory = async_sessionmaker(bind=async_engine, class_=AsyncSession, expire_on_commit=False)
+
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Get an async database session with automatic cleanup.
     Yields:
@@ -38,26 +39,24 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     Raises:
         SQLAlchemyError: If database operations fail
     """
-    session = AsyncSession(engine)
-    try:
-        yield session
-        await session.commit()
-    except SQLAlchemyError as e:
-        await session.rollback()
-        logger.error(f"Database session error: {str(e)}")
-        raise
-    finally:
-        await session.close()
+    async with SessionFactory() as session:
+        try:
+            yield session
+            await session.commit()
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error(f"Database session error: {str(e)}")
+            raise e
+        finally:
+            await session.close()
 
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=2, min=1, max=30),
     retry=retry_if_exception_type((OperationalError, SQLAlchemyError))
 )
-async def init_db(session: AsyncSession) -> None:
+async def init_db() -> None:
     """Initialize database with retry logic for connection failures.
-    Args:
-        session (Session): SQLModel session object
     Raises:
         OperationalError: If database connection fails after retries
         SQLAlchemyError: If any other database error occurs
@@ -65,20 +64,22 @@ async def init_db(session: AsyncSession) -> None:
     try:
         registered_tables = SQLModel.metadata.tables.keys()
         if registered_tables:
-            logger.info(f"Registered tables: {registered_tables}")
-            # Create database tables with explicit metadata binding
-            # Use engine.sync_engine for table creation since SQLModel's create_all expects a sync engine
-            await session.run_sync(lambda s: SQLModel.metadata.create_all(bind=engine.sync_engine, checkfirst=True))
-            logger.info("Tables created successfully.")
+            table_names = [table.split('.')[-1] for table in registered_tables]
+            logger.info(f"Registered tables: {', '.join(table_names)}")
+            # Create database tables with explicit metadata binding without using migrations
+            # async with async_engine.begin() as conn:
+            #     await conn.run_sync(SQLModel.metadata.create_all)
+            # logger.info("Tables created successfully.")
         else:
             logger.warning("No tables registered in SQLModel metadata.")
 
-        # Verify database connection with a more precise health check
-        result = await session.execute(
-            select(1).execution_options(timeout=10)
-        )
-        if result.scalar_one() != 1:
-            raise SQLAlchemyError("Database health check failed: unexpected response")
+        # Verify database connection with a health check
+        async with SessionFactory() as session:
+            result = await session.execute(
+                select(1).execution_options(timeout=10)
+            )
+            if result.scalar_one() != 1:
+                raise SQLAlchemyError("Database health check failed: unexpected response")
 
         logger.info("Database initialized successfully - Connection verified")
     except OperationalError as e:
@@ -88,7 +89,7 @@ async def init_db(session: AsyncSession) -> None:
             "retry_attempt": True
         }
         logger.error(f"Database connection failed: {error_context}")
-        raise OperationalError(f"Database connection failed: {error_context}")
+        raise e
     except SQLAlchemyError as e:
         error_context = {
             "error_type": "database_error",
@@ -96,7 +97,7 @@ async def init_db(session: AsyncSession) -> None:
             "operation": "initialization"
         }
         logger.error(f"Database error occurred: {error_context}")
-        raise SQLAlchemyError(f"Database error occurred: {error_context}")
+        raise e
 
 
 
